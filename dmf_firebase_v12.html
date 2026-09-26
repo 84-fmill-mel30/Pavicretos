@@ -1,0 +1,1988 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema · División Asfalto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.js"></script>
+<style>
+  :root{
+    --asfalto:#1c1b1a;
+    --asfalto-2:#262523;
+    --concreto:#6b6862;
+    --concreto-light:#c9c5bc;
+    --papel:#f5f3ee;
+    --naranja:#e8630a;
+    --naranja-dark:#c14f06;
+    --azul:#2b4c6f;
+    --azul-light:#5c85ad;
+    --amarillo:#f2c230;
+    --linea:#3a3835;
+    --ok:#3d8b5f;
+    --alerta:#c1443f;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:'Inter', sans-serif;
+    background:var(--asfalto);
+    color:var(--papel);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{ display:block; }
+  @media (min-width:900px){ .app{ display:grid; grid-template-columns:260px 1fr; min-height:100vh; } }
+
+  /* SIDEBAR */
+  .sidebar{
+    background:var(--asfalto-2);
+    border-right:1px solid var(--linea);
+    padding:28px 20px;
+    display:flex; flex-direction:column; gap:28px;
+    position:static; height:auto; overflow-y:visible;
+  }
+  @media (min-width:900px){
+    .sidebar{ position:sticky; top:0; height:100vh; overflow-y:auto; }
+  }
+  .brand{ border-bottom:2px solid var(--naranja); padding-bottom:14px; }
+  .brand .eyebrow{ font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:.12em; color:var(--naranja); text-transform:uppercase; }
+  .brand h1{ font-family:'Oswald', sans-serif; font-size:22px; font-weight:600; letter-spacing:.01em; margin-top:4px; text-transform:uppercase; line-height:1.15; }
+  .brand .sub{ font-size:12px; color:var(--concreto-light); margin-top:6px; }
+
+  .plant-select label{ font-family:'JetBrains Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--concreto-light); display:block; margin-bottom:8px; }
+  select#plantSelect{
+    width:100%; background:var(--asfalto); color:var(--papel); border:1px solid var(--linea);
+    padding:10px 12px; font-family:'Inter'; font-size:13px; border-radius:2px; cursor:pointer;
+  }
+
+  .nav-group h3{ font-family:'JetBrains Mono', monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--concreto); margin-bottom:10px; }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:10px 10px; border-radius:2px; font-size:13px;
+    color:var(--papel); cursor:pointer; border-left:2px solid transparent;
+  }
+  .nav-item:hover:not(.disabled){ background:rgba(255,255,255,.03); }
+  .nav-item.active{ background:rgba(232,99,10,.12); border-left-color:var(--naranja); color:#fff; font-weight:600; }
+  .nav-item.disabled{ color:var(--concreto); cursor:default; }
+  .nav-item .tag{ margin-left:auto; font-family:'JetBrains Mono', monospace; font-size:9px; background:var(--linea); color:var(--concreto-light); padding:2px 6px; border-radius:2px; letter-spacing:.06em; }
+
+  .doc-count{ margin-top:auto; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--concreto-light); border-top:1px solid var(--linea); padding-top:14px; }
+  .doc-count b{ color:var(--naranja); font-size:16px; display:block; }
+
+  /* MAIN */
+  main{ padding:36px 44px; max-width:1100px; }
+  @media (max-width:640px){ main{ padding:22px 18px; } }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .page-head{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:28px; }
+  .page-head h2{ font-family:'Oswald', sans-serif; font-size:32px; text-transform:uppercase; font-weight:600; letter-spacing:.01em; }
+  .page-head .desc{ color:var(--concreto-light); font-size:14px; margin-top:6px; max-width:560px; }
+  .ticket-num{ font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--concreto-light); text-align:right; }
+  .ticket-num b{ color:var(--amarillo); font-size:16px; display:block; }
+
+  /* Templates row */
+  .templates{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
+  .tpl-btn{
+    background:var(--asfalto-2); border:1px solid var(--linea); color:var(--papel);
+    padding:9px 16px; border-radius:2px; font-size:12.5px; cursor:pointer; font-family:'Inter'; font-weight:500;
+    transition:.15s;
+  }
+  .tpl-btn:hover{ border-color:var(--naranja); color:var(--naranja); }
+  .tpl-btn.active{ background:var(--naranja); border-color:var(--naranja); color:#1c1b1a; font-weight:700; }
+
+  /* Upload zone */
+  .dropzone{
+    border:2px dashed var(--linea); border-radius:4px; padding:38px 24px; text-align:center;
+    background:var(--asfalto-2); cursor:pointer; transition:.15s; position:relative;
+  }
+  .dropzone.drag{ border-color:var(--naranja); background:rgba(232,99,10,.06); }
+  .dropzone .icon{ font-size:34px; margin-bottom:10px; }
+  .dropzone .main-txt{ font-weight:600; font-size:14px; }
+  .dropzone .sub-txt{ font-size:12px; color:var(--concreto-light); margin-top:5px; }
+  input[type=file]{ display:none; }
+
+  .preview-row{ display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:20px; }
+  @media (max-width:760px){ .preview-row{ grid-template-columns:1fr; } }
+  .panel{ background:var(--asfalto-2); border:1px solid var(--linea); border-radius:4px; padding:18px; }
+  .panel h4{ font-family:'JetBrains Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--concreto-light); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+  .panel img{ width:100%; border-radius:2px; display:block; }
+  .ocr-text{ white-space:pre-wrap; font-family:'JetBrains Mono', monospace; font-size:12px; line-height:1.6; color:var(--concreto-light); max-height:300px; overflow-y:auto; }
+
+  .btn{
+    background:var(--naranja); color:#1c1b1a; border:none; padding:11px 20px; font-weight:700;
+    font-size:13px; border-radius:2px; cursor:pointer; font-family:'Inter'; letter-spacing:.01em;
+    transition:.15s;
+  }
+  .btn:hover{ background:var(--naranja-dark); }
+  .btn:disabled{ background:var(--linea); color:var(--concreto); cursor:not-allowed; }
+  .btn.secondary{ background:transparent; border:1px solid var(--linea); color:var(--papel); }
+  .btn.secondary:hover{ border-color:var(--papel); }
+  .btn.small{ padding:6px 12px; font-size:11px; }
+  .btn.azul{ background:var(--azul); color:#fff; }
+  .btn.azul:hover{ background:#233d59; }
+
+  .progress-wrap{ margin-top:14px; background:var(--linea); height:6px; border-radius:3px; overflow:hidden; display:none; }
+  .progress-wrap.show{ display:block; }
+  .progress-bar{ height:100%; background:var(--naranja); width:0%; transition:width .2s; }
+  .progress-label{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--concreto-light); margin-top:6px; }
+
+  /* Editable table */
+  .table-section{ margin-top:30px; }
+  .table-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px; }
+  .table-head h3{ font-family:'Oswald', sans-serif; font-size:18px; text-transform:uppercase; letter-spacing:.02em; }
+  .table-scroll{ overflow-x:auto; border:1px solid var(--linea); border-radius:4px; }
+  table.datatable{ border-collapse:collapse; width:100%; min-width:520px; }
+  table.datatable th, table.datatable td{ border-bottom:1px solid var(--linea); border-right:1px solid var(--linea); padding:0; }
+  table.datatable th{ background:var(--asfalto-2); font-family:'JetBrains Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--concreto-light); text-align:left; }
+  table.datatable th input{
+    background:transparent; border:none; color:var(--amarillo); font-family:'JetBrains Mono', monospace;
+    font-size:11px; text-transform:uppercase; padding:10px 12px; width:100%; font-weight:700;
+  }
+  table.datatable td input{
+    background:transparent; border:none; color:var(--papel); font-family:'Inter'; font-size:13px;
+    padding:9px 12px; width:100%;
+  }
+  table.datatable td input:focus, table.datatable th input:focus{ background:rgba(232,99,10,.08); outline:1px solid var(--naranja); }
+  table.datatable tr:last-child td{ border-bottom:none; }
+  .row-actions{ display:flex; gap:8px; margin-top:12px; }
+
+  .action-bar{ display:flex; gap:10px; margin-top:24px; flex-wrap:wrap; }
+
+  .saved-list{ margin-top:40px; }
+  .saved-item{
+    display:flex; justify-content:space-between; align-items:center; padding:12px 16px;
+    background:var(--asfalto-2); border:1px solid var(--linea); border-radius:3px; margin-bottom:8px; font-size:13px;
+  }
+  .saved-item .meta{ color:var(--concreto-light); font-size:11px; font-family:'JetBrains Mono', monospace; margin-top:2px; }
+  .saved-actions{ display:flex; gap:8px; }
+  .empty-hint{ color:var(--concreto); font-size:13px; padding:20px 0; }
+
+  .toast{
+    position:fixed; bottom:24px; right:24px; background:var(--ok); color:#fff; padding:12px 20px;
+    border-radius:3px; font-size:13px; font-weight:600; box-shadow:0 6px 20px rgba(0,0,0,.35);
+    opacity:0; transform:translateY(10px); transition:.25s; pointer-events:none; z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateY(0); }
+
+  /* Diesel module */
+  .form-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; background:var(--asfalto-2); border:1px solid var(--linea); border-radius:4px; padding:20px; }
+  @media (max-width:760px){ .form-grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:520px){ .form-grid{ grid-template-columns:1fr; } }
+  .field label{ font-family:'JetBrains Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--concreto-light); display:block; margin-bottom:6px; }
+  .field input, .field select{
+    width:100%; background:var(--asfalto); color:var(--papel); border:1px solid var(--linea);
+    padding:9px 11px; font-family:'Inter'; font-size:13px; border-radius:2px;
+  }
+  .field input:focus, .field select:focus{ border-color:var(--naranja); outline:none; }
+
+  .metric-row{ display:flex; gap:14px; margin-top:20px; flex-wrap:wrap; }
+  .metric-card{ background:var(--asfalto-2); border:1px solid var(--linea); border-radius:4px; padding:16px 20px; flex:1; min-width:150px; }
+  .metric-card .lbl{ font-family:'JetBrains Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--concreto-light); }
+  .metric-card .val{ font-family:'JetBrains Mono', monospace; font-size:26px; font-weight:700; color:var(--amarillo); margin-top:6px; }
+  .metric-card .val.blue{ color:var(--azul-light); }
+  .metric-card .unit{ font-size:11px; color:var(--concreto-light); }
+
+  .bar-gauge{ display:flex; gap:2px; align-items:flex-end; margin-top:8px; }
+  .bar-gauge .bar{ width:6px; height:16px; background:var(--linea); border-radius:1px; }
+  .bar-gauge .bar.filled{ background:var(--naranja); }
+  .bar-gauge .bar.filled.low{ background:var(--alerta); }
+
+  .filter-row{ display:flex; gap:10px; margin:24px 0 14px 0; flex-wrap:wrap; align-items:center; }
+  .filter-row select{ background:var(--asfalto-2); color:var(--papel); border:1px solid var(--linea); padding:8px 12px; border-radius:2px; font-size:12.5px; font-family:'Inter'; }
+  .filter-row .filter-label{ font-family:'JetBrains Mono', monospace; font-size:10px; text-transform:uppercase; color:var(--concreto-light); letter-spacing:.06em; }
+
+  .log-table th, .log-table td{ font-size:12.5px; padding:9px 12px; border-bottom:1px solid var(--linea); border-right:1px solid var(--linea); text-align:left; white-space:nowrap; }
+  .log-table th{ background:var(--asfalto-2); font-family:'JetBrains Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--concreto-light); }
+  .log-table td.num{ font-family:'JetBrains Mono', monospace; }
+  .badge{ font-family:'JetBrains Mono', monospace; font-size:10px; padding:3px 8px; border-radius:10px; text-transform:uppercase; letter-spacing:.04em; }
+  .badge.ok{ background:rgba(61,139,95,.15); color:#5cb385; }
+  .badge.warn{ background:rgba(193,68,63,.15); color:#e2726d; }
+  .chart-wrap{ background:var(--asfalto-2); border:1px solid var(--linea); border-radius:4px; padding:20px; margin-top:24px; height:280px; }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--linea); border-radius:4px; }
+  :focus-visible{ outline:2px solid var(--amarillo); outline-offset:2px; }
+
+  /* Calidad de asfalto */
+  .norm-toggle{ display:flex; gap:10px; margin-bottom:20px; }
+  .norm-btn{ background:var(--asfalto-2); border:1px solid var(--linea); color:var(--papel); padding:9px 18px; border-radius:2px; font-size:12.5px; cursor:pointer; font-family:'JetBrains Mono', monospace; letter-spacing:.04em; }
+  .norm-btn.active{ background:var(--azul); border-color:var(--azul); color:#fff; font-weight:700; }
+
+  .subtabs{ display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--linea); }
+  .subtab{ padding:10px 16px; font-size:13px; color:var(--concreto-light); cursor:pointer; border-bottom:2px solid transparent; }
+  .subtab.active{ color:var(--papel); border-bottom-color:var(--naranja); font-weight:600; }
+
+  .note-box{ background:rgba(242,194,48,.08); border:1px solid rgba(242,194,48,.3); color:var(--concreto-light); font-size:12px; padding:12px 16px; border-radius:3px; margin-bottom:20px; line-height:1.5; }
+  .note-box b{ color:var(--amarillo); }
+
+  .sieve-table th, .sieve-table td{ font-size:12.5px; padding:8px 10px; border-bottom:1px solid var(--linea); border-right:1px solid var(--linea); text-align:left; }
+  .sieve-table th{ background:var(--asfalto-2); font-family:'JetBrains Mono', monospace; font-size:10.5px; text-transform:uppercase; color:var(--concreto-light); }
+  .sieve-table input{ width:70px; background:var(--asfalto); border:1px solid var(--linea); color:var(--papel); padding:6px 8px; border-radius:2px; font-family:'JetBrains Mono', monospace; font-size:12.5px; }
+  .sub-panel{ background:var(--asfalto-2); border:1px solid var(--linea); border-radius:4px; padding:20px; margin-bottom:24px; }
+  .sub-panel h4{ font-family:'Oswald', sans-serif; font-size:16px; text-transform:uppercase; margin-bottom:14px; letter-spacing:.02em; }
+
+  @media print{
+    .sidebar, .action-bar, .filter-row, .templates, .dropzone, .preview-row, .form-grid, .row-actions { display:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="eyebrow">Demoliendo México</div>
+      <h1>División Asfalto</h1>
+      <div class="sub">Sistema de transcripción y control de formatos</div>
+    </div>
+
+    <div class="plant-select">
+      <label for="plantSelect">Planta</label>
+      <select id="plantSelect">
+        <option>San Carlos</option>
+        <option>Palo Amarillo</option>
+        <option>Puebla</option>
+        <option>Palo Escrito</option>
+      </select>
+    </div>
+
+    <div class="nav-group">
+      <h3>Módulos</h3>
+      <div class="nav-item active" data-view="transcribe">📄 Transcripción de documentos</div>
+      <div class="nav-item" data-view="diesel">⛽ Rendimiento diésel</div>
+      <div class="nav-item" data-view="calidad">🧪 Calidad de asfalto</div>
+      <div class="nav-item disabled">📊 Producción / m³ <span class="tag">próximo</span></div>
+      <div class="nav-item disabled">💰 Costos y ventas <span class="tag">próximo</span></div>
+    </div>
+
+    <div class="doc-count">
+      Documentos guardados
+      <b id="docCount">0</b>
+    </div>
+  </aside>
+
+  <main>
+
+    <!-- ===== VISTA 1: TRANSCRIPCIÓN ===== -->
+    <section class="view active" id="view-transcribe">
+      <div class="page-head">
+        <div>
+          <h2>Transcripción de documentos</h2>
+          <div class="desc">Escanea o sube una foto del formato en papel. El sistema extrae el texto y lo acomoda en una tabla editable que puedes exportar a Excel.</div>
+        </div>
+        <div class="ticket-num">Folio<b id="folioNum">—</b></div>
+      </div>
+
+      <div class="templates" id="templates"></div>
+
+      <div class="norm-toggle" style="margin-bottom:8px;">
+        <button type="button" class="norm-btn active" data-modo="auto">🔍 Igual que trae la imagen (automático)</button>
+        <button type="button" class="norm-btn" data-modo="formato">📤 Mi formato subido</button>
+      </div>
+      <div style="margin-bottom:20px;">
+        <input type="file" id="plantillaInput" accept=".xlsx,.xls,.csv" style="display:none;">
+        <button type="button" class="btn secondary small" id="subirPlantillaBtn">📤 Subir / cambiar mi formato (Excel/CSV)</button>
+        <span id="plantillaEstado" style="font-size:11.5px; color:var(--concreto-light); margin-left:8px;">Aún no has subido ningún formato</span>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInputCamera" accept="image/*" capture="environment" style="display:none;">
+        <input type="file" id="fileInput" accept="image/*" style="display:none;">
+        <div class="icon">📁</div>
+        <div class="main-txt">Sube una imagen o arrástrala aquí</div>
+        <div class="sub-txt">JPG, PNG · también puedes tocar aquí para elegir de tus archivos o galería</div>
+        <div style="margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+          <button type="button" class="btn small secondary" id="btnTomarFoto">📷 Tomar foto</button>
+          <button type="button" class="btn small secondary" id="btnImportar">📁 Elegir de archivos / galería</button>
+        </div>
+      </div>
+
+      <div class="preview-row" id="previewRow" style="display:none;">
+        <div class="panel">
+          <h4>Documento original</h4>
+          <img id="previewImg" alt="Vista previa del documento">
+        </div>
+        <div class="panel">
+          <h4>Texto detectado <button class="btn small secondary" id="runOcrBtn">Leer documento</button></h4>
+          <div class="progress-wrap" id="progressWrap">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <div class="progress-label" id="progressLabel"></div>
+          <div class="ocr-text" id="ocrText">Sube una imagen y presiona "Leer documento" para extraer el texto.</div>
+        </div>
+      </div>
+
+      <div class="table-section">
+        <div class="table-head">
+          <h3 id="tplTitle">Formato en blanco</h3>
+          <div class="row-actions">
+            <button class="btn small secondary" id="addColBtn">+ Columna</button>
+            <button class="btn small secondary" id="addRowBtn">+ Fila</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="datatable" id="dataTable"></table>
+        </div>
+
+        <div class="action-bar" style="align-items:center;">
+          <button class="btn" id="saveBtn">Guardar documento</button>
+          <button class="btn secondary" id="exportBtn">Exportar a Excel</button>
+          <button class="btn secondary" id="exportWordBtn">Exportar a Word</button>
+          <button class="btn secondary" id="printBtn">Imprimir / PDF</button>
+          <button class="btn secondary" id="clearBtn">Formato en blanco</button>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--concreto-light); margin-left:4px;">
+            <input type="checkbox" id="soloEncabezados"> Solo encabezados (plantilla en blanco)
+          </label>
+        </div>
+      </div>
+
+      <div class="saved-list">
+        <div class="table-head"><h3>Documentos guardados</h3></div>
+        <div id="savedItems"><div class="empty-hint">Todavía no hay documentos guardados en esta sesión.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== VISTA 2: RENDIMIENTO DIÉSEL ===== -->
+    <section class="view" id="view-diesel">
+      <div class="page-head">
+        <div>
+          <h2>Rendimiento de diésel</h2>
+          <div class="desc">Registro por horómetro. Rendimiento = litros cargados ÷ horas trabajadas (horómetro final − horómetro inicial).</div>
+        </div>
+      </div>
+
+      <div class="norm-toggle" style="margin-top:0;">
+        <button class="norm-btn active" data-horas="horometro">Por horómetro (inicio/fin)</button>
+        <button class="norm-btn" data-horas="directas">Horas directas (ej. trabajó 5 h)</button>
+      </div>
+
+      <div class="form-grid" style="margin-top:14px;">
+        <div class="field">
+          <label>Fecha</label>
+          <input type="date" id="dFecha">
+        </div>
+        <div class="field">
+          <label>Tipo de equipo</label>
+          <select id="dTipo">
+            <option>Generador de luz / planta</option>
+            <option>Maquinaria pesada</option>
+            <option>Pyloder</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nombre / clave del equipo</label>
+          <input type="text" id="dEquipo" placeholder="ej. Generador 01, Pyloder 03">
+        </div>
+        <div class="field" id="campoHoroIni">
+          <label>Horómetro inicial (h)</label>
+          <input type="number" step="0.1" id="dHoroIni" placeholder="0.0">
+        </div>
+        <div class="field" id="campoHoroFin">
+          <label>Horómetro final (h)</label>
+          <input type="number" step="0.1" id="dHoroFin" placeholder="0.0">
+        </div>
+        <div class="field" id="campoHorasDirectas" style="display:none;">
+          <label>Horas trabajadas hoy</label>
+          <input type="number" step="0.1" id="dHorasDirectas" placeholder="ej. 5">
+        </div>
+        <div class="field">
+          <label>Operador</label>
+          <input type="text" id="dOperador" placeholder="Nombre del operador">
+        </div>
+      </div>
+
+      <div class="norm-toggle" style="margin-top:16px;">
+        <button class="norm-btn active" data-metodo="simple">Método simple (litros cargados)</button>
+        <button class="norm-btn" data-metodo="nivel">Por nivel de tanque</button>
+      </div>
+
+      <!-- Método simple -->
+      <div class="form-grid" id="metodoSimple" style="margin-top:14px;">
+        <div class="field">
+          <label>Litros cargados</label>
+          <input type="number" step="0.1" id="dLitros" placeholder="0.0">
+        </div>
+      </div>
+
+      <!-- Método por nivel de tanque -->
+      <div id="metodoNivel" style="display:none; margin-top:14px;">
+        <div class="note-box" id="ultimoNivelHint" style="display:none;"></div>
+        <div class="note-box">
+          <b>¿Primera vez con este equipo o el nivel no cuadra?</b> Escribe el nombre del equipo, pon el nivel real que tiene ahora en los campos de abajo y presiona "Fijar nivel actual". Eso queda como punto de partida para el seguimiento — lo puedes corregir cuando quieras. También puedes anotar el consumo de referencia del motor (si lo sabes por ficha técnica) para comparar contra el rendimiento real.
+        </div>
+        <div class="form-grid" style="margin-bottom:14px;">
+          <div class="field">
+            <label>Consumo de referencia del motor (L/h) — opcional</label>
+            <input type="number" step="0.1" id="dReferencia" placeholder="ej. 8.5 (motor chico) / 18 (motor grande)">
+          </div>
+        </div>
+        <div class="action-bar" style="margin-top:0; margin-bottom:16px;">
+          <button class="btn azul small" id="fijarNivelBtn">📍 Fijar / corregir nivel y referencia</button>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Capacidad del tanque (L)</label>
+            <input type="number" step="1" id="dCapacidad" placeholder="ej. 200">
+          </div>
+          <div class="field">
+            <label>Litros cargados durante el periodo</label>
+            <input type="number" step="0.1" id="dLitrosNivel" placeholder="0.0">
+          </div>
+          <div class="field">
+            <label>Tipo de marcador</label>
+            <select id="dTipoMarcador">
+              <option value="visual">Visual (Lleno / 3-4 / Medio / 1-4 / Vacío)</option>
+              <option value="digital">Digital (franjas)</option>
+              <option value="porcentaje">Porcentaje (%)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid" id="nivelVisualFields" style="margin-top:14px;">
+          <div class="field">
+            <label>Nivel al inicio</label>
+            <select id="dNivelIni">
+              <option value="1">Lleno</option>
+              <option value="0.75">3/4</option>
+              <option value="0.5">Medio</option>
+              <option value="0.25">1/4</option>
+              <option value="0">Vacío</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Nivel al término</label>
+            <select id="dNivelFin">
+              <option value="1">Lleno</option>
+              <option value="0.75">3/4</option>
+              <option value="0.5" selected>Medio</option>
+              <option value="0.25">1/4</option>
+              <option value="0">Vacío</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid" id="nivelDigitalFields" style="display:none; margin-top:14px;">
+          <div class="field">
+            <label>Total de franjas del marcador</label>
+            <input type="number" step="1" id="dFranjasTotal" placeholder="ej. 13">
+          </div>
+          <div class="field">
+            <label>Litros por franja (calibración) — editable</label>
+            <input type="number" step="0.01" id="dLitrosPorFranja" placeholder="se sugiere solo si pones capacidad">
+          </div>
+        </div>
+
+        <div class="form-grid" id="nivelDigitalFields2" style="display:none; margin-top:14px;">
+          <div class="field">
+            <label>Franjas al inicio</label>
+            <input type="number" step="1" id="dFranjasIni" placeholder="0">
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button type="button" class="btn small secondary" id="franjasIniVacio">Vacío</button>
+              <button type="button" class="btn small secondary" id="franjasIniLleno">Lleno</button>
+            </div>
+            <div class="bar-gauge" id="gaugeIni"></div>
+          </div>
+          <div class="field">
+            <label>Franjas al término (real, lo que marca hoy)</label>
+            <input type="number" step="1" id="dFranjasFin" placeholder="0">
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button type="button" class="btn small secondary" id="franjasFinVacio">Vacío</button>
+              <button type="button" class="btn small secondary" id="franjasFinLleno">Lleno</button>
+            </div>
+            <div class="bar-gauge" id="gaugeFin"></div>
+          </div>
+        </div>
+
+        <div class="form-grid" id="nivelPorcentajeFields" style="display:none; margin-top:14px;">
+          <div class="field">
+            <label>Nivel al inicio (%)</label>
+            <input type="number" step="1" min="0" max="100" id="dPercentIni" placeholder="ej. 80">
+          </div>
+          <div class="field">
+            <label>Nivel al término (%)</label>
+            <input type="number" step="1" min="0" max="100" id="dPercentFin" placeholder="ej. 45">
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-row">
+        <div class="metric-card">
+          <div class="lbl">Horas trabajadas</div>
+          <div class="val" id="mHoras">0.0 <span class="unit">h</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="lbl">Diésel consumido (real)</div>
+          <div class="val" id="mConsumido">0.0 <span class="unit">L</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="lbl">Rendimiento</div>
+          <div class="val blue" id="mRendimiento">0.00 <span class="unit">L/h</span></div>
+        </div>
+        <div class="metric-card" id="cardEsperado" style="display:none;">
+          <div class="lbl">Barras esperadas al final (según referencia)</div>
+          <div class="val" id="mBarrasEsperadas" style="color:var(--amarillo);">—</div>
+          <div class="bar-gauge" id="gaugeEsperado" style="margin-top:8px;"></div>
+          <div class="progress-label" id="comparacionBarras" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn" id="dieselAddBtn">Registrar carga</button>
+        <button class="btn secondary" id="dieselExportBtn">Exportar bitácora a Excel</button>
+      </div>
+
+      <div class="filter-row">
+        <span class="filter-label">Filtrar por tipo de equipo</span>
+        <select id="dieselFilter">
+          <option value="todos">Todos</option>
+          <option>Generador de luz / planta</option>
+          <option>Maquinaria pesada</option>
+          <option>Pyloder</option>
+          <option>Otro</option>
+        </select>
+        <span class="filter-label" style="margin-left:10px;">Día de la semana</span>
+        <select id="dieselFilterDia">
+          <option value="todos">Todos</option>
+          <option value="1">Lunes</option>
+          <option value="2">Martes</option>
+          <option value="3">Miércoles</option>
+          <option value="4">Jueves</option>
+          <option value="5">Viernes</option>
+          <option value="6">Sábado</option>
+          <option value="0">Domingo</option>
+        </select>
+      </div>
+
+      <div class="table-head" style="margin-top:6px;">
+        <h3 style="font-size:15px;">Resumen por semana</h3>
+      </div>
+      <div class="table-scroll" style="margin-bottom:20px;">
+        <table class="log-table" id="dieselWeekTable" style="width:100%; border-collapse:collapse;"></table>
+      </div>
+
+      <div class="table-head">
+        <h3 style="font-size:15px;">Bitácora diaria</h3>
+      </div>
+      <div class="table-scroll">
+        <table class="log-table" id="dieselTable" style="width:100%; border-collapse:collapse;"></table>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="dieselChart"></canvas>
+      </div>
+    </section>
+
+    <!-- ===== VISTA 3: CALIDAD DE ASFALTO ===== -->
+    <section class="view" id="view-calidad">
+      <div class="page-head">
+        <div>
+          <h2>Calidad de asfalto</h2>
+          <div class="desc">Captura de pruebas de laboratorio: granulometría, contenido de asfalto y estabilidad Marshall.</div>
+        </div>
+      </div>
+
+      <div class="norm-toggle">
+        <button class="norm-btn active" data-norm="SCT">Norma SCT</button>
+        <button class="norm-btn" data-norm="ASTM">Norma ASTM</button>
+      </div>
+
+      <div class="note-box">
+        <b>Nota:</b> los rangos de referencia que se muestran son valores típicos editables, no la tabla oficial vigente. Ajusta cada rango con la especificación exacta de tu proyecto/mezcla antes de usarlos como criterio de aceptación.
+      </div>
+
+      <div class="subtabs">
+        <div class="subtab active" data-sub="granulometria">Granulometría</div>
+        <div class="subtab" data-sub="asfalto">Contenido de asfalto</div>
+        <div class="subtab" data-sub="marshall">Estabilidad Marshall</div>
+      </div>
+
+      <!-- Granulometría -->
+      <div class="sub-panel" id="sub-granulometria">
+        <h4>Granulometría de agregados</h4>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr; margin-bottom:16px;">
+          <div class="field"><label>Fecha</label><input type="date" id="gFecha"></div>
+          <div class="field"><label>Muestra / procedencia</label><input type="text" id="gMuestra" placeholder="ej. Banco Palo Amarillo"></div>
+          <div class="field"><label>Tipo de mezcla</label><input type="text" id="gMezcla" placeholder="ej. Densa 12.5mm"></div>
+        </div>
+        <div class="table-scroll">
+          <table class="sieve-table" id="sieveTable" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+        <div class="action-bar">
+          <button class="btn small secondary" id="sieveAddRow">+ Malla</button>
+          <button class="btn" id="sieveSaveBtn">Guardar granulometría</button>
+          <button class="btn secondary" id="sieveExportBtn">Exportar a Excel</button>
+        </div>
+      </div>
+
+      <!-- Contenido de asfalto -->
+      <div class="sub-panel" id="sub-asfalto" style="display:none;">
+        <h4>Contenido de asfalto</h4>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+          <div class="field"><label>Fecha</label><input type="date" id="aFecha"></div>
+          <div class="field"><label>Muestra</label><input type="text" id="aMuestra" placeholder="Identificación de la muestra"></div>
+          <div class="field"><label>% Asfalto obtenido</label><input type="number" step="0.01" id="aValor" placeholder="0.00"></div>
+          <div class="field"><label>Rango mínimo (%)</label><input type="number" step="0.01" id="aMin" value="4.5"></div>
+          <div class="field"><label>Rango máximo (%)</label><input type="number" step="0.01" id="aMax" value="6.5"></div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="lbl">Resultado</div>
+            <div class="val" id="aResultado">—</div>
+          </div>
+        </div>
+        <div class="action-bar">
+          <button class="btn" id="aSaveBtn">Guardar resultado</button>
+          <button class="btn secondary" id="aExportBtn">Exportar a Excel</button>
+        </div>
+        <div class="table-scroll" style="margin-top:20px;">
+          <table class="log-table" id="aTable" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <!-- Marshall -->
+      <div class="sub-panel" id="sub-marshall" style="display:none;">
+        <h4>Estabilidad Marshall</h4>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+          <div class="field"><label>Fecha</label><input type="date" id="mFecha"></div>
+          <div class="field"><label>Muestra</label><input type="text" id="mMuestra" placeholder="Identificación de la muestra"></div>
+          <div class="field"><label>Estabilidad (kg)</label><input type="number" step="1" id="mEstabilidad" placeholder="0"></div>
+          <div class="field"><label>Flujo (mm)</label><input type="number" step="0.01" id="mFlujo" placeholder="0.00"></div>
+          <div class="field"><label>Estabilidad mínima (kg)</label><input type="number" step="1" id="mMin" value="815"></div>
+          <div class="field"><label>Flujo rango (mm)</label><input type="text" id="mFlujoRango" value="2.0 - 4.0"></div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="lbl">Resultado</div>
+            <div class="val" id="mResultado">—</div>
+          </div>
+        </div>
+        <div class="action-bar">
+          <button class="btn" id="mSaveBtn">Guardar resultado</button>
+          <button class="btn secondary" id="mExportBtn">Exportar a Excel</button>
+        </div>
+        <div class="table-scroll" style="margin-top:20px;">
+          <table class="log-table" id="mTable" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =========================================================
+// ALMACENAMIENTO — Firebase Firestore (proyecto "DMF")
+// Los datos se guardan de forma permanente y compartida entre
+// todas las plantas. Cada "key" del sistema es un documento en
+// la colección "dmf-storage".
+// =========================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyD9ldGELMsEtYTiGFVAkn_X3YxOprf5VVA",
+  authDomain: "division-asfalto.firebaseapp.com",
+  projectId: "division-asfalto",
+  storageBucket: "division-asfalto.firebasestorage.app",
+  messagingSenderId: "556842001951",
+  appId: "1:556842001951:web:af1571d62a8b3c6c21172a",
+};
+
+let db = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}catch(e){
+  console.error('No se pudo inicializar Firebase:', e);
+}
+
+let avisoStorageMostrado = false;
+function avisarSinStorage(mensaje){
+  if(avisoStorageMostrado) return;
+  avisoStorageMostrado = true;
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed; top:0; left:0; right:0; background:#c1443f; color:#fff; padding:10px 16px; font-family:Inter,sans-serif; font-size:12.5px; text-align:center; z-index:999;';
+  banner.textContent = mensaje || '⚠ No se pudo conectar con la base de datos (DMF). Revisa tu conexión a internet o los permisos de Firestore.';
+  document.body.prepend(banner);
+}
+
+const COL = 'dmf-storage';
+const safeStorage = {
+  async get(key){
+    if(!db){ avisarSinStorage(); return null; }
+    try{
+      const doc = await db.collection(COL).doc(key).get();
+      if(!doc.exists) return null;
+      return { key, value: doc.data().value };
+    }catch(e){
+      console.error('Error leyendo', key, e);
+      avisarSinStorage('⚠ No se pudo leer de la base de datos (DMF). Revisa las reglas de Firestore.');
+      return null;
+    }
+  },
+  async set(key, value){
+    if(!db){ avisarSinStorage(); return null; }
+    try{
+      await db.collection(COL).doc(key).set({ value, actualizado: firebase.firestore.FieldValue.serverTimestamp() });
+      return { key, value };
+    }catch(e){
+      console.error('Error guardando', key, e);
+      avisarSinStorage('⚠ No se pudo guardar en la base de datos (DMF). Revisa las reglas de Firestore.');
+      return null;
+    }
+  },
+  async delete(key){
+    if(!db){ avisarSinStorage(); return null; }
+    try{
+      await db.collection(COL).doc(key).delete();
+      return { key, deleted: true };
+    }catch(e){
+      console.error('Error borrando', key, e);
+      avisarSinStorage('⚠ No se pudo borrar en la base de datos (DMF). Revisa las reglas de Firestore.');
+      return null;
+    }
+  }
+};
+
+// =========================================================
+// NAVEGACIÓN ENTRE MÓDULOS
+// =========================================================
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+  item.onclick = () => {
+    document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    const view = item.dataset.view;
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + view).classList.add('active');
+    if(view === 'diesel') renderDieselChart();
+  };
+});
+
+// =========================================================
+// MÓDULO 1 — TRANSCRIPCIÓN
+// =========================================================
+const TEMPLATES = {
+  blanco: { label: "Formato en blanco", cols: ["Concepto", "Detalle", "Cantidad", "Unidad"] },
+  factura: { label: "Factura / gasto", cols: ["Fecha", "Proveedor", "Concepto", "Cantidad", "P. Unitario", "Importe"] },
+  bitacora: { label: "Bitácora de combustible", cols: ["Fecha", "Equipo", "Horómetro inicial", "Horómetro final", "Litros cargados", "Operador"] },
+  produccion: { label: "Reporte de producción", cols: ["Fecha", "Turno", "Material", "Toneladas", "m³ producidos", "Observaciones"] },
+};
+
+let currentTemplate = "blanco";
+let tableData = { headers: [...TEMPLATES.blanco.cols], rows: [Array(TEMPLATES.blanco.cols.length).fill("")] };
+let currentImageDataUrl = null;
+let folio = 1;
+
+function initTranscribe(){
+  renderTemplateButtons();
+  renderTable();
+  loadSavedList();
+  document.getElementById('folioNum').textContent = String(folio).padStart(4,'0');
+}
+
+function renderTemplateButtons(){
+  const wrap = document.getElementById('templates');
+  wrap.innerHTML = '';
+  Object.entries(TEMPLATES).forEach(([key, tpl]) => {
+    const b = document.createElement('button');
+    b.className = 'tpl-btn' + (key === currentTemplate ? ' active' : '');
+    b.textContent = tpl.label;
+    b.onclick = () => applyTemplate(key);
+    wrap.appendChild(b);
+  });
+}
+
+function applyTemplate(key){
+  currentTemplate = key;
+  const tpl = TEMPLATES[key];
+  tableData = { headers: [...tpl.cols], rows: [Array(tpl.cols.length).fill("")] };
+  document.getElementById('tplTitle').textContent = tpl.label;
+  renderTemplateButtons();
+  renderTable();
+}
+
+// modoTranscripcion: 'auto' = acomoda igual que trae la imagen; 'formato' = usa tu Excel/CSV subido
+let modoTranscripcion = 'auto';
+let plantillaGuardada = null; // { nombre, headers } — se conserva aunque cambies de modo
+let plantillaNombreArchivo = null;
+
+document.querySelectorAll('.norm-btn[data-modo]').forEach(b => {
+  b.onclick = () => {
+    if(b.dataset.modo === 'formato' && !plantillaGuardada){
+      showToast('Primero sube tu formato con el botón de abajo');
+      document.getElementById('plantillaInput').click();
+      return;
+    }
+    document.querySelectorAll('.norm-btn[data-modo]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    modoTranscripcion = b.dataset.modo;
+    if(modoTranscripcion === 'formato' && plantillaGuardada){
+      tableData = { headers: [...plantillaGuardada.headers], rows: [Array(plantillaGuardada.headers.length).fill("")] };
+      document.getElementById('tplTitle').textContent = '📤 Tu formato: ' + plantillaGuardada.nombre;
+      document.querySelectorAll('.tpl-btn').forEach(x => x.classList.remove('active'));
+      renderTable();
+    } else if(modoTranscripcion === 'auto'){
+      applyTemplate('blanco');
+    }
+  };
+});
+
+document.getElementById('subirPlantillaBtn').onclick = () => document.getElementById('plantillaInput').click();
+document.getElementById('plantillaInput').onchange = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      // Toma la primera fila que no esté vacía como encabezados
+      const filaEncabezados = aoa.find(row => row.some(c => (c ?? '').toString().trim() !== ''));
+      if(!filaEncabezados){ showToast('No se encontraron encabezados en el archivo'); return; }
+      const headers = filaEncabezados.map(h => (h ?? '').toString().trim()).filter(h => h !== '');
+      plantillaGuardada = { nombre: file.name, headers };
+      document.getElementById('plantillaEstado').textContent = '✓ Formato cargado: ' + file.name;
+
+      // Cambia automáticamente al modo "Mi formato" para usarlo de inmediato
+      document.querySelectorAll('.norm-btn[data-modo]').forEach(x => x.classList.remove('active'));
+      document.querySelector('.norm-btn[data-modo="formato"]').classList.add('active');
+      modoTranscripcion = 'formato';
+      tableData = { headers: [...headers], rows: [Array(headers.length).fill("")] };
+      document.getElementById('tplTitle').textContent = '📤 Tu formato: ' + file.name;
+      document.querySelectorAll('.tpl-btn').forEach(b => b.classList.remove('active'));
+      renderTable();
+      showToast('Formato cargado — ahora los datos de la foto se acomodarán en estas columnas');
+    }catch(err){
+      showToast('No se pudo leer el archivo. ¿Es un Excel o CSV válido?');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
+
+function renderTable(){
+  const table = document.getElementById('dataTable');
+  table.innerHTML = '';
+  const thead = document.createElement('tr');
+  tableData.headers.forEach((h, ci) => {
+    const th = document.createElement('th');
+    const inp = document.createElement('input');
+    inp.value = h;
+    inp.oninput = (e) => tableData.headers[ci] = e.target.value;
+    th.appendChild(inp);
+    thead.appendChild(th);
+  });
+  const thAction = document.createElement('th');
+  thAction.style.width = '40px';
+  thead.appendChild(thAction);
+  table.appendChild(thead);
+
+  tableData.rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    row.forEach((val, ci) => {
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.value = val;
+      inp.oninput = (e) => tableData.rows[ri][ci] = e.target.value;
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+    const tdDel = document.createElement('td');
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '✕';
+    delBtn.style.cssText = 'background:none;border:none;color:#6b6862;cursor:pointer;font-size:13px;';
+    delBtn.onclick = () => { tableData.rows.splice(ri,1); if(tableData.rows.length===0) tableData.rows.push(Array(tableData.headers.length).fill("")); renderTable(); };
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
+    table.appendChild(tr);
+  });
+}
+
+document.getElementById('addRowBtn').onclick = () => {
+  tableData.rows.push(Array(tableData.headers.length).fill(""));
+  renderTable();
+};
+document.getElementById('addColBtn').onclick = () => {
+  tableData.headers.push("Nueva columna");
+  tableData.rows.forEach(r => r.push(""));
+  renderTable();
+};
+document.getElementById('clearBtn').onclick = () => applyTemplate(currentTemplate);
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileInputCamera = document.getElementById('fileInputCamera');
+document.getElementById('btnImportar').onclick = (e) => { e.stopPropagation(); fileInput.click(); };
+document.getElementById('btnTomarFoto').onclick = (e) => { e.stopPropagation(); fileInputCamera.click(); };
+dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('drag'); };
+dropzone.ondragleave = () => dropzone.classList.remove('drag');
+dropzone.ondrop = (e) => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleImage(e.dataTransfer.files[0]);
+};
+fileInput.onchange = (e) => { if(e.target.files[0]) handleImage(e.target.files[0]); };
+fileInputCamera.onchange = (e) => { if(e.target.files[0]) handleImage(e.target.files[0]); };
+
+function handleImage(file){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    currentImageDataUrl = e.target.result;
+    document.getElementById('previewImg').src = currentImageDataUrl;
+    document.getElementById('previewRow').style.display = 'grid';
+    document.getElementById('ocrText').textContent = 'Imagen cargada. Presiona "Leer documento" para extraer el texto.';
+  };
+  reader.readAsDataURL(file);
+}
+
+// Mejora la imagen antes de leerla: escala de grises + más contraste + más tamaño,
+// esto ayuda mucho con capturas de pantalla (texto de color, fondos claros, letras chicas)
+function mejorarImagenParaOCR(dataUrl){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const escala = img.width < 1200 ? 2 : 1; // agranda si la imagen es chica
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * escala;
+      canvas.height = img.height * escala;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imgData.data;
+      const contraste = 1.35;
+      for(let i = 0; i < d.length; i += 4){
+        const gris = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+        let val = (gris - 128) * contraste + 128;
+        val = Math.max(0, Math.min(255, val));
+        d[i] = d[i+1] = d[i+2] = val;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(dataUrl); // si algo falla, usa la original
+    img.src = dataUrl;
+  });
+}
+
+document.getElementById('runOcrBtn').onclick = async () => {
+  if(!currentImageDataUrl){ showToast('Primero sube una imagen'); return; }
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const progressLabel = document.getElementById('progressLabel');
+  const ocrText = document.getElementById('ocrText');
+  progressWrap.classList.add('show');
+  ocrText.textContent = '';
+  document.getElementById('runOcrBtn').disabled = true;
+
+  try{
+    progressLabel.textContent = 'Mejorando calidad de la imagen…';
+    const imagenMejorada = await mejorarImagenParaOCR(currentImageDataUrl);
+    const result = await Tesseract.recognize(imagenMejorada, 'spa+eng', {
+      logger: (m) => {
+        if(m.status === 'recognizing text'){
+          const pct = Math.round(m.progress * 100);
+          progressBar.style.width = pct + '%';
+          progressLabel.textContent = 'Leyendo documento… ' + pct + '%';
+        } else {
+          progressLabel.textContent = m.status;
+        }
+      }
+    });
+    ocrText.textContent = result.data.text.trim() || '(No se detectó texto legible. Intenta con mejor luz o enfoque.)';
+    autoFillFromOcr(result.data.text);
+    showToast('Documento leído');
+  }catch(err){
+    ocrText.textContent = 'Ocurrió un error leyendo la imagen. Intenta de nuevo con otra foto.';
+  }finally{
+    document.getElementById('runOcrBtn').disabled = false;
+    setTimeout(() => progressWrap.classList.remove('show'), 800);
+  }
+};
+
+function normalizarTexto(s){
+  return (s ?? '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+}
+
+function palabrasDe(s){
+  return (s ?? '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean);
+}
+
+// Grupos de palabras equivalentes comunes en facturas, transferencias y formatos de oficina
+const GRUPOS_SINONIMOS = [
+  ['monto','importe','total','cantidad'],
+  ['cliente','proveedor','tercero','nombre','beneficiario','contacto'],
+  ['referencia','folio','numero','no','num'],
+  ['fecha','dia'],
+  ['cuenta','numerodecuenta'],
+  ['concepto','descripcion','detalle'],
+  ['origen','retiro','emisor'],
+  ['destino','deposito','receptor'],
+  ['divisa','moneda'],
+];
+function sinonimosDe(palabra){
+  const grupo = GRUPOS_SINONIMOS.find(g => g.includes(palabra));
+  return grupo ? new Set(grupo) : new Set([palabra]);
+}
+
+function scoreCoincidencia(header, label){
+  const nh = normalizarTexto(header), nl = normalizarTexto(label);
+  if(!nh || !nl) return 0;
+  if(nh === nl) return 100;
+  if(nl.includes(nh) || nh.includes(nl)) return 70;
+  const wh = palabrasDe(header), wl = palabrasDe(label);
+  let comunes = 0;
+  wh.forEach(ph => {
+    const equivalentes = sinonimosDe(ph);
+    if(wl.some(pl => equivalentes.has(pl))) comunes++;
+  });
+  return comunes > 0 ? 40 + comunes * 10 : 0;
+}
+
+function autoFillFromOcr(text){
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if(lines.length === 0) return;
+
+  // --- Paso 1: ¿es un formulario tipo "Etiqueta   Valor"? (comprobantes, recibos, transferencias) ---
+  // El OCR muchas veces se come los dos puntos y deja solo un espacio, así que en vez de
+  // buscar ":" buscamos dónde EMPIEZA el valor: el primer "token" que parece un dato
+  // (número, fecha, monto, o una palabra EN MAYÚSCULAS de un nombre/código),
+  // todo lo de antes es la etiqueta.
+  function separarEtiquetaValor(line){
+    const tokens = line.split(/\s+/);
+    let idxValor = -1;
+    for(let i = 0; i < tokens.length; i++){
+      const t = tokens[i];
+      const pareceValor = /^\$/.test(t) || /^\d/.test(t) || (/^[A-ZÁÉÍÓÚÑ]{2,}$/.test(t));
+      if(pareceValor){ idxValor = i; break; }
+    }
+    if(idxValor <= 0 || idxValor >= tokens.length) return null; // sin etiqueta o sin valor
+    const label = tokens.slice(0, idxValor).join(' ').trim();
+    const value = tokens.slice(idxValor).join(' ').trim();
+    if(label.length < 2 || label.length > 45 || value.length === 0) return null;
+    if(label.split(/\s+/).length > 4) return null; // las etiquetas reales de un formulario son cortas (1-4 palabras)
+    return [label, value];
+  }
+
+  const paresEtiquetaValor = [];
+  let lineasConPatron = 0;
+  lines.forEach(line => {
+    const par = separarEtiquetaValor(line);
+    if(par){
+      lineasConPatron++;
+      paresEtiquetaValor.push(par);
+    }
+  });
+  const esFormulario = lineasConPatron >= Math.max(3, Math.ceil(lines.length * 0.4));
+
+  // --- Si ya subiste tu propio formato, los datos SIEMPRE se acomodan en TUS columnas ---
+  // (no se crean columnas nuevas, no se reemplazan encabezados)
+  if(modoTranscripcion === 'formato'){
+    const fuente = esFormulario ? paresEtiquetaValor : lines.map(l => [l, l]);
+    const fila = tableData.headers.map(header => {
+      if(!header) return '';
+      let mejorValor = '';
+      let mejorScore = 0;
+      fuente.forEach(([label, val]) => {
+        const score = scoreCoincidencia(header, label);
+        if(score > mejorScore){ mejorScore = score; mejorValor = val; }
+      });
+      return mejorValor;
+    });
+    tableData.rows = [fila];
+    renderTable();
+    showToast('Datos acomodados en tu formato');
+    return;
+  }
+
+  // Si más de la mitad de las líneas tienen ese patrón, es un formulario — se transpone:
+  // cada etiqueta se vuelve una COLUMNA y sus valores van en una sola fila.
+  if(esFormulario){
+    const headers = paresEtiquetaValor.map(p => p[0]);
+    const valores = paresEtiquetaValor.map(p => p[1]);
+    tableData.headers = headers;
+    tableData.rows = [valores];
+    document.getElementById('tplTitle').textContent = 'Formulario detectado (etiqueta: valor)';
+    renderTable();
+    return;
+  }
+
+  // --- Paso 2: documento tabular normal (varias filas/columnas) ---
+  // Intenta partir cada línea en columnas usando 2+ espacios, tabs, o separadores comunes (| , ;)
+  const partidas = lines.slice(0, 40).map(line => {
+    let cols = line.split(/\t|\s{2,}|\s*\|\s*/).map(c => c.trim()).filter(c => c.length > 0);
+    if(cols.length <= 1){
+      // como respaldo, intenta separar por coma o punto y coma si hay varias
+      const alt = line.split(/\s*[;,]\s*/).map(c => c.trim()).filter(c => c.length > 0);
+      if(alt.length > 1) cols = alt;
+    }
+    return cols.length > 0 ? cols : [line];
+  });
+
+  const maxCols = Math.max(...partidas.map(c => c.length), tableData.headers.length);
+
+  // Si el documento trae más columnas de las que tiene la plantilla actual, la extiende
+  while(tableData.headers.length < maxCols){
+    tableData.headers.push('Columna ' + tableData.headers.length);
+  }
+
+  const rows = partidas.map(cols => {
+    const row = Array(tableData.headers.length).fill("");
+    cols.forEach((val, i) => { if(i < row.length) row[i] = val; });
+    return row;
+  });
+  tableData.rows = rows.length ? rows : tableData.rows;
+  renderTable();
+}
+
+document.getElementById('saveBtn').onclick = async () => {
+  const plant = document.getElementById('plantSelect').value;
+  const doc = {
+    id: 'doc_' + Date.now(),
+    folio: folio,
+    template: TEMPLATES[currentTemplate].label,
+    plant,
+    headers: tableData.headers,
+    rows: tableData.rows,
+    date: new Date().toISOString(),
+  };
+  try{
+    await safeStorage.set('doc:' + doc.id, JSON.stringify(doc));
+    const list = await getDocIndex();
+    list.push(doc.id);
+    await safeStorage.set('doc-index', JSON.stringify(list));
+    folio++;
+    document.getElementById('folioNum').textContent = String(folio).padStart(4,'0');
+    showToast('Documento guardado');
+    loadSavedList();
+  }catch(err){
+    showToast('No se pudo guardar');
+  }
+};
+
+async function getDocIndex(){
+  try{
+    const r = await safeStorage.get('doc-index');
+    return r ? JSON.parse(r.value) : [];
+  }catch(err){ return []; }
+}
+
+async function loadSavedList(){
+  const ids = await getDocIndex();
+  const wrap = document.getElementById('savedItems');
+  document.getElementById('docCount').textContent = ids.length;
+  if(ids.length === 0){
+    wrap.innerHTML = '<div class="empty-hint">Todavía no hay documentos guardados en esta sesión.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  for(const id of ids.slice().reverse()){
+    try{
+      const r = await safeStorage.get('doc:' + id);
+      if(!r) continue;
+      const doc = JSON.parse(r.value);
+      const item = document.createElement('div');
+      item.className = 'saved-item';
+      item.innerHTML = `
+        <div>
+          <div>${doc.template} — Folio ${String(doc.folio).padStart(4,'0')}</div>
+          <div class="meta">${doc.plant} · ${new Date(doc.date).toLocaleString('es-MX')}</div>
+        </div>
+        <div class="saved-actions">
+          <button class="btn small secondary" data-load="${doc.id}">Abrir</button>
+          <button class="btn small secondary" data-del="${doc.id}">Borrar</button>
+        </div>`;
+      wrap.appendChild(item);
+    }catch(err){}
+  }
+  wrap.querySelectorAll('[data-load]').forEach(b => b.onclick = () => openDoc(b.dataset.load));
+  wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteDoc(b.dataset.del));
+}
+
+async function openDoc(id){
+  try{
+    const r = await safeStorage.get('doc:' + id);
+    if(!r) return;
+    const doc = JSON.parse(r.value);
+    tableData = { headers: doc.headers, rows: doc.rows };
+    document.getElementById('tplTitle').textContent = doc.template + ' (abierto)';
+    document.getElementById('plantSelect').value = doc.plant;
+    renderTable();
+    showToast('Documento abierto');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }catch(err){ showToast('No se pudo abrir'); }
+}
+
+async function deleteDoc(id){
+  try{
+    await safeStorage.delete('doc:' + id);
+    const list = await getDocIndex();
+    const updated = list.filter(x => x !== id);
+    await safeStorage.set('doc-index', JSON.stringify(updated));
+    loadSavedList();
+    showToast('Documento borrado');
+  }catch(err){ showToast('No se pudo borrar'); }
+}
+
+document.getElementById('exportBtn').onclick = () => {
+  const soloEnc = document.getElementById('soloEncabezados').checked;
+  const aoa = soloEnc ? [tableData.headers] : [tableData.headers, ...tableData.rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Documento');
+  const plant = document.getElementById('plantSelect').value.replace(/\s+/g,'_');
+  const sufijo = soloEnc ? '_plantilla' : '';
+  XLSX.writeFile(wb, `${TEMPLATES[currentTemplate].label.replace(/\s+/g,'_')}_${plant}_${String(folio).padStart(4,'0')}${sufijo}.xlsx`);
+  showToast('Excel descargado');
+};
+
+document.getElementById('exportWordBtn').onclick = () => {
+  if(typeof htmlDocx === 'undefined'){ showToast('No se pudo cargar el generador de Word'); return; }
+  const soloEnc = document.getElementById('soloEncabezados').checked;
+  const filas = soloEnc ? [] : tableData.rows;
+  let filasHtml = '';
+  filas.forEach(row => {
+    filasHtml += '<tr>' + row.map(v => `<td style="border:1px solid #999; padding:6px 8px; font-size:11pt;">${(v ?? '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>`).join('') + '</tr>';
+  });
+  if(soloEnc){
+    // Deja algunas filas en blanco listas para llenar a mano o a máquina
+    for(let i = 0; i < 10; i++){
+      filasHtml += '<tr>' + tableData.headers.map(() => `<td style="border:1px solid #999; padding:14px 8px;">&nbsp;</td>`).join('') + '</tr>';
+    }
+  }
+  const headHtml = '<tr>' + tableData.headers.map(h => `<th style="border:1px solid #999; padding:6px 8px; background:#e8630a; color:#fff; font-size:11pt;">${(h ?? '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;')}</th>`).join('') + '</tr>';
+  const plant = document.getElementById('plantSelect').value;
+  const html = `
+    <html>
+      <head><meta charset="utf-8"></head>
+      <body style="font-family:Calibri, Arial, sans-serif;">
+        <h2 style="font-family:Arial; margin-bottom:4px;">${TEMPLATES[currentTemplate].label}</h2>
+        <p style="font-size:10pt; color:#555; margin-top:0;">Planta: ${plant} · Folio: ${String(folio).padStart(4,'0')}</p>
+        <table style="border-collapse:collapse; width:100%;">
+          ${headHtml}
+          ${filasHtml}
+        </table>
+      </body>
+    </html>`;
+  const blob = htmlDocx.asBlob(html);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const sufijo = soloEnc ? '_plantilla' : '';
+  a.href = url;
+  a.download = `${TEMPLATES[currentTemplate].label.replace(/\s+/g,'_')}_${plant.replace(/\s+/g,'_')}_${String(folio).padStart(4,'0')}${sufijo}.docx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Word descargado');
+};
+
+document.getElementById('printBtn').onclick = () => window.print();
+
+// =========================================================
+// MÓDULO 2 — RENDIMIENTO DIÉSEL
+// =========================================================
+let dieselLog = [];
+let dieselChartInstance = null;
+let metodoActual = 'simple';
+
+document.querySelectorAll('.norm-btn[data-metodo]').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.norm-btn[data-metodo]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    metodoActual = b.dataset.metodo;
+    document.getElementById('metodoSimple').style.display = metodoActual === 'simple' ? 'grid' : 'none';
+    document.getElementById('metodoNivel').style.display = metodoActual === 'nivel' ? 'block' : 'none';
+    calcDiesel();
+  };
+});
+
+document.getElementById('dTipoMarcador').onchange = (e) => {
+  document.getElementById('nivelVisualFields').style.display = e.target.value === 'visual' ? 'grid' : 'none';
+  document.getElementById('nivelDigitalFields').style.display = e.target.value === 'digital' ? 'grid' : 'none';
+  document.getElementById('nivelDigitalFields2').style.display = e.target.value === 'digital' ? 'grid' : 'none';
+  document.getElementById('nivelPorcentajeFields').style.display = e.target.value === 'porcentaje' ? 'grid' : 'none';
+  calcDiesel();
+};
+
+document.getElementById('franjasIniVacio').onclick = () => { document.getElementById('dFranjasIni').value = 0; calcDiesel(); };
+document.getElementById('franjasFinVacio').onclick = () => { document.getElementById('dFranjasFin').value = 0; calcDiesel(); };
+document.getElementById('franjasIniLleno').onclick = () => {
+  const total = parseFloat(document.getElementById('dFranjasTotal').value) || 0;
+  document.getElementById('dFranjasIni').value = total;
+  calcDiesel();
+};
+document.getElementById('franjasFinLleno').onclick = () => {
+  const total = parseFloat(document.getElementById('dFranjasTotal').value) || 0;
+  document.getElementById('dFranjasFin').value = total;
+  calcDiesel();
+};
+
+// --- Historial de último nivel de tanque por equipo ---
+function equipoKey(nombre){
+  return 'tanklevel:' + nombre.trim().toLowerCase().replace(/\s+/g,'_');
+}
+
+async function buscarUltimoNivel(){
+  const equipo = document.getElementById('dEquipo').value.trim();
+  const hint = document.getElementById('ultimoNivelHint');
+  if(!equipo){ hint.style.display = 'none'; return; }
+  try{
+    const r = await safeStorage.get(equipoKey(equipo));
+    if(!r){ hint.style.display = 'none'; return; }
+    const data = JSON.parse(r.value);
+    const pct = Math.round(data.fraccion * 100);
+    const refTxt = data.referencia ? ` · Consumo de referencia: <b>${data.referencia} L/h</b>` : '';
+    hint.style.display = 'block';
+    hint.innerHTML = `<b>Último nivel registrado de ${equipo}:</b> ${pct}% — ${data.fecha}${refTxt}. Se precargó como nivel inicial (puedes corregirlo si mediste otra cosa).`;
+    if(data.referencia) document.getElementById('dReferencia').value = data.referencia;
+    // Precargar como nivel inicial según el tipo de marcador activo
+    document.getElementById('dPercentIni').value = pct;
+    const nivelesVisual = [1,0.75,0.5,0.25,0];
+    const masCercano = nivelesVisual.reduce((a,b) => Math.abs(b - data.fraccion) < Math.abs(a - data.fraccion) ? b : a);
+    document.getElementById('dNivelIni').value = String(masCercano);
+    const totalFranjas = parseFloat(document.getElementById('dFranjasTotal').value) || 0;
+    if(totalFranjas > 0){
+      document.getElementById('dFranjasIni').value = Math.round(data.fraccion * totalFranjas);
+    }
+    calcDiesel();
+  }catch(err){ hint.style.display = 'none'; }
+}
+document.getElementById('dEquipo').addEventListener('blur', buscarUltimoNivel);
+
+async function guardarUltimoNivel(equipo, fraccionFinal, fecha, referencia){
+  if(!equipo || isNaN(fraccionFinal)) return;
+  try{
+    const key = equipoKey(equipo);
+    let referenciaFinal = referencia;
+    if(referenciaFinal === undefined || referenciaFinal === null || isNaN(referenciaFinal)){
+      try{
+        const prev = await safeStorage.get(key);
+        if(prev) referenciaFinal = JSON.parse(prev.value).referencia;
+      }catch(e){}
+    }
+    await safeStorage.set(key, JSON.stringify({ fraccion: fraccionFinal, fecha, referencia: referenciaFinal ?? null }));
+  }catch(err){}
+}
+
+document.getElementById('fijarNivelBtn').onclick = async () => {
+  const equipo = document.getElementById('dEquipo').value.trim();
+  if(!equipo){ showToast('Escribe primero el nombre del equipo'); return; }
+
+  const tipoMarcador = document.getElementById('dTipoMarcador').value;
+  let fraccion;
+  if(tipoMarcador === 'visual'){
+    fraccion = parseFloat(document.getElementById('dNivelIni').value);
+  } else if(tipoMarcador === 'digital'){
+    const totalFranjas = parseFloat(document.getElementById('dFranjasTotal').value) || 0;
+    const franjasIni = parseFloat(document.getElementById('dFranjasIni').value) || 0;
+    fraccion = totalFranjas > 0 ? franjasIni / totalFranjas : NaN;
+  } else {
+    const pct = parseFloat(document.getElementById('dPercentIni').value);
+    fraccion = isNaN(pct) ? NaN : pct / 100;
+  }
+
+  if(isNaN(fraccion)){ showToast('Captura el nivel actual en los campos de arriba'); return; }
+
+  const fecha = document.getElementById('dFecha').value || new Date().toISOString().slice(0,10);
+  const referencia = parseFloat(document.getElementById('dReferencia').value);
+  await guardarUltimoNivel(equipo, fraccion, fecha, isNaN(referencia) ? null : referencia);
+  showToast(`Nivel de ${equipo} fijado en ${Math.round(fraccion*100)}%`);
+  buscarUltimoNivel();
+};
+
+function drawBarGauge(containerId, filled, total){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  total = Math.max(Math.round(total) || 0, 0);
+  filled = Math.max(Math.min(Math.round(filled) || 0, total), 0);
+  let html = '';
+  for(let i = 0; i < total; i++){
+    const isFilled = i < filled;
+    const low = isFilled && (filled / total) <= 0.2;
+    html += `<div class="bar ${isFilled ? 'filled' : ''} ${low ? 'low' : ''}"></div>`;
+  }
+  el.innerHTML = html || '<span style="color:var(--concreto); font-size:11px;">Pon el total de franjas</span>';
+}
+
+let tipoHorasActual = 'horometro';
+document.querySelectorAll('.norm-btn[data-horas]').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.norm-btn[data-horas]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    tipoHorasActual = b.dataset.horas;
+    document.getElementById('campoHoroIni').style.display = tipoHorasActual === 'horometro' ? 'block' : 'none';
+    document.getElementById('campoHoroFin').style.display = tipoHorasActual === 'horometro' ? 'block' : 'none';
+    document.getElementById('campoHorasDirectas').style.display = tipoHorasActual === 'directas' ? 'block' : 'none';
+    calcDiesel();
+  };
+});
+
+function calcDiesel(){
+  let horas;
+  if(tipoHorasActual === 'directas'){
+    horas = parseFloat(document.getElementById('dHorasDirectas').value) || 0;
+  } else {
+    const ini = parseFloat(document.getElementById('dHoroIni').value) || 0;
+    const fin = parseFloat(document.getElementById('dHoroFin').value) || 0;
+    horas = Math.max(fin - ini, 0);
+  }
+
+  let consumido = 0;
+  let fracFinCalc = null;
+
+  if(metodoActual === 'simple'){
+    consumido = parseFloat(document.getElementById('dLitros').value) || 0;
+  } else {
+    const capacidad = parseFloat(document.getElementById('dCapacidad').value) || 0;
+    const cargado = parseFloat(document.getElementById('dLitrosNivel').value) || 0;
+    const tipoMarcador = document.getElementById('dTipoMarcador').value;
+    const totalFranjas = parseFloat(document.getElementById('dFranjasTotal').value) || 0;
+    let fracIni, fracFin;
+    if(tipoMarcador === 'visual'){
+      fracIni = parseFloat(document.getElementById('dNivelIni').value);
+      fracFin = parseFloat(document.getElementById('dNivelFin').value);
+    } else if(tipoMarcador === 'digital'){
+      const franjasIni = parseFloat(document.getElementById('dFranjasIni').value) || 0;
+      const franjasFin = parseFloat(document.getElementById('dFranjasFin').value) || 0;
+      fracIni = totalFranjas > 0 ? franjasIni / totalFranjas : 0;
+      fracFin = totalFranjas > 0 ? franjasFin / totalFranjas : 0;
+
+      // Litros por franja: usa el valor editable si lo pusieron; si no, lo sugiere con capacidad/total
+      const litrosPorFranjaInput = document.getElementById('dLitrosPorFranja');
+      let litrosPorFranja = parseFloat(litrosPorFranjaInput.value);
+      if(isNaN(litrosPorFranja) && capacidad > 0 && totalFranjas > 0){
+        litrosPorFranja = capacidad / totalFranjas;
+        litrosPorFranjaInput.placeholder = litrosPorFranja.toFixed(2) + ' (sugerido)';
+      }
+
+      drawBarGauge('gaugeIni', franjasIni, totalFranjas);
+      drawBarGauge('gaugeFin', franjasFin, totalFranjas);
+
+      // Barras esperadas al final, según la referencia de consumo del motor (L/h)
+      const referencia = parseFloat(document.getElementById('dReferencia').value);
+      const cardEsperado = document.getElementById('cardEsperado');
+      if(!isNaN(referencia) && litrosPorFranja > 0 && totalFranjas > 0){
+        const litrosEsperadoGastado = referencia * horas;
+        const franjasGastadasEsperadas = litrosEsperadoGastado / litrosPorFranja;
+        const franjasCargadas = cargado / litrosPorFranja;
+        let barrasEsperadas = franjasIni - franjasGastadasEsperadas + franjasCargadas;
+        barrasEsperadas = Math.max(Math.min(barrasEsperadas, totalFranjas), 0);
+        cardEsperado.style.display = 'block';
+        document.getElementById('mBarrasEsperadas').innerHTML = `${Math.round(barrasEsperadas)} <span class="unit">/ ${totalFranjas} franjas</span>`;
+        drawBarGauge('gaugeEsperado', barrasEsperadas, totalFranjas);
+        const comp = document.getElementById('comparacionBarras');
+        if(document.getElementById('dFranjasFin').value !== ''){
+          const diff = franjasFin - Math.round(barrasEsperadas);
+          if(diff === 0){
+            comp.innerHTML = '<span style="color:#5cb385;">✓ Coincide con lo real</span>';
+          } else {
+            comp.innerHTML = `<span style="color:#e2726d;">⚠ Diferencia de ${Math.abs(diff)} franja(s) vs. lo real — revisar posible fuga o carga no registrada</span>`;
+          }
+        } else {
+          comp.textContent = 'Captura las franjas al término para comparar contra lo real.';
+        }
+      } else {
+        cardEsperado.style.display = 'none';
+      }
+    } else {
+      fracIni = (parseFloat(document.getElementById('dPercentIni').value) || 0) / 100;
+      fracFin = (parseFloat(document.getElementById('dPercentFin').value) || 0) / 100;
+    }
+    fracFinCalc = fracFin;
+    const nivelIniL = capacidad * (fracIni || 0);
+    const nivelFinL = capacidad * (fracFin || 0);
+    // Diésel consumido real = nivel inicial en tanque + diésel cargado en el periodo - nivel final en tanque
+    consumido = Math.max((nivelIniL + cargado) - nivelFinL, 0);
+  }
+
+  const rendimiento = horas > 0 ? (consumido / horas) : 0;
+  document.getElementById('mHoras').innerHTML = horas.toFixed(1) + ' <span class="unit">h</span>';
+  document.getElementById('mConsumido').innerHTML = consumido.toFixed(1) + ' <span class="unit">L</span>';
+  document.getElementById('mRendimiento').innerHTML = rendimiento.toFixed(2) + ' <span class="unit">L/h</span>';
+  return { horas, rendimiento, consumido, fracFin: fracFinCalc };
+}
+['dHoroIni','dHoroFin','dHorasDirectas','dLitros','dCapacidad','dLitrosNivel','dNivelIni','dNivelFin','dFranjasTotal','dFranjasIni','dFranjasFin','dPercentIni','dPercentFin','dLitrosPorFranja','dReferencia'].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.oninput = calcDiesel;
+});
+
+document.getElementById('dieselAddBtn').onclick = async () => {
+  const fecha = document.getElementById('dFecha').value || new Date().toISOString().slice(0,10);
+  const tipo = document.getElementById('dTipo').value;
+  const equipo = document.getElementById('dEquipo').value.trim();
+  const operador = document.getElementById('dOperador').value.trim();
+
+  let ini = null, fin = null;
+  if(tipoHorasActual === 'horometro'){
+    ini = parseFloat(document.getElementById('dHoroIni').value);
+    fin = parseFloat(document.getElementById('dHoroFin').value);
+    if(!equipo || isNaN(ini) || isNaN(fin)){
+      showToast('Completa equipo y horómetros');
+      return;
+    }
+    if(fin <= ini){
+      showToast('Horómetro final debe ser mayor al inicial');
+      return;
+    }
+  } else {
+    const horasDirectas = parseFloat(document.getElementById('dHorasDirectas').value);
+    if(!equipo || isNaN(horasDirectas) || horasDirectas <= 0){
+      showToast('Completa equipo y horas trabajadas');
+      return;
+    }
+  }
+
+  const { horas, rendimiento, consumido, fracFin } = calcDiesel();
+  if(consumido <= 0){
+    showToast('Captura los litros o el nivel de tanque');
+    return;
+  }
+
+  const entry = {
+    id: 'fuel_' + Date.now(),
+    plant: document.getElementById('plantSelect').value,
+    fecha, tipo, equipo, ini, fin, operador, horas, rendimiento,
+    metodo: metodoActual,
+    tipoHoras: tipoHorasActual,
+    litros: consumido,
+    referencia: metodoActual === 'nivel' ? (parseFloat(document.getElementById('dReferencia').value) || null) : null,
+  };
+
+  try{
+    await safeStorage.set('fuel:' + entry.id, JSON.stringify(entry));
+    const idx = await getFuelIndex();
+    idx.push(entry.id);
+    await safeStorage.set('fuel-index', JSON.stringify(idx));
+    if(metodoActual === 'nivel' && fracFin !== null){
+      await guardarUltimoNivel(equipo, fracFin, fecha, entry.referencia);
+    }
+    showToast('Carga registrada');
+    // limpiar campos
+    ['dEquipo','dHoroIni','dHoroFin','dHorasDirectas','dLitros','dLitrosNivel','dOperador','dFranjasIni','dFranjasFin','dPercentIni','dPercentFin'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = '';
+    });
+    document.getElementById('ultimoNivelHint').style.display = 'none';
+    document.getElementById('cardEsperado').style.display = 'none';
+    calcDiesel();
+    await loadDieselLog();
+  }catch(err){ showToast('No se pudo guardar el registro'); }
+};
+
+async function getFuelIndex(){
+  try{
+    const r = await safeStorage.get('fuel-index');
+    return r ? JSON.parse(r.value) : [];
+  }catch(err){ return []; }
+}
+
+async function loadDieselLog(){
+  const ids = await getFuelIndex();
+  dieselLog = [];
+  for(const id of ids){
+    try{
+      const r = await safeStorage.get('fuel:' + id);
+      if(r) dieselLog.push(JSON.parse(r.value));
+    }catch(err){}
+  }
+  renderDieselTable();
+  renderDieselChart();
+}
+
+const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+function diaSemana(fechaStr){
+  // fechaStr en formato YYYY-MM-DD — se parsea en UTC para evitar corrimiento de día por zona horaria
+  const d = new Date(fechaStr + 'T00:00:00Z');
+  return d.getUTCDay();
+}
+function isoWeekLabel(fechaStr){
+  const d = new Date(fechaStr + 'T00:00:00Z');
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getUTCDay() + 6) % 7;
+  target.setUTCDate(target.getUTCDate() - dayNr + 3);
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(),0,4));
+  const weekNumber = 1 + Math.round(((target - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return `${target.getUTCFullYear()}-W${String(weekNumber).padStart(2,'0')}`;
+}
+
+function renderDieselTable(){
+  const filter = document.getElementById('dieselFilter').value;
+  const filterDia = document.getElementById('dieselFilterDia').value;
+  const rows = dieselLog
+    .filter(e => filter === 'todos' || e.tipo === filter)
+    .filter(e => filterDia === 'todos' || String(diaSemana(e.fecha)) === filterDia)
+    .sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+
+  const table = document.getElementById('dieselTable');
+  const headers = ['Fecha','Día','Planta','Tipo','Equipo','Horas','Método','Litros consumidos','Rendimiento','Referencia (L/h)','vs. Referencia','Operador'];
+  let html = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+
+  if(rows.length === 0){
+    html += `<tr><td colspan="${headers.length}" style="padding:16px 12px;color:#6b6862;">Sin registros para este filtro.</td></tr>`;
+  } else {
+    rows.forEach(e => {
+      let compBadge = '<span style="color:#6b6862;">—</span>';
+      if(e.referencia){
+        const diff = ((e.rendimiento - e.referencia) / e.referencia) * 100;
+        const cls = Math.abs(diff) <= 10 ? 'ok' : 'warn';
+        const signo = diff > 0 ? '+' : '';
+        compBadge = `<span class="badge ${cls}">${signo}${diff.toFixed(0)}%</span>`;
+      }
+      html += `<tr>
+        <td>${e.fecha}</td>
+        <td>${DIAS[diaSemana(e.fecha)]}</td>
+        <td>${e.plant}</td>
+        <td>${e.tipo}</td>
+        <td>${e.equipo}</td>
+        <td class="num">${e.horas.toFixed(1)}</td>
+        <td>${e.metodo === 'nivel' ? 'Por nivel' : 'Simple'}</td>
+        <td class="num">${e.litros.toFixed(1)}</td>
+        <td class="num">${e.rendimiento.toFixed(2)} L/h</td>
+        <td class="num">${e.referencia ? e.referencia.toFixed(1) : '—'}</td>
+        <td class="num">${compBadge}</td>
+        <td>${e.operador || '—'}</td>
+      </tr>`;
+    });
+  }
+  table.innerHTML = html;
+  renderDieselWeekSummary(rows);
+}
+
+function renderDieselWeekSummary(rows){
+  const table = document.getElementById('dieselWeekTable');
+  const weeks = {};
+  rows.forEach(e => {
+    const wk = isoWeekLabel(e.fecha);
+    if(!weeks[wk]) weeks[wk] = { horas:0, litros:0, count:0, rendSum:0 };
+    weeks[wk].horas += e.horas;
+    weeks[wk].litros += e.litros;
+    weeks[wk].rendSum += e.rendimiento;
+    weeks[wk].count += 1;
+  });
+  const wkKeys = Object.keys(weeks).sort().reverse();
+  let html = '<tr><th>Semana</th><th>Registros</th><th>Horas totales</th><th>Litros totales</th><th>Rendimiento promedio</th></tr>';
+  if(wkKeys.length === 0){
+    html += `<tr><td colspan="5" style="padding:16px 12px;color:#6b6862;">Sin datos aún.</td></tr>`;
+  } else {
+    wkKeys.forEach(wk => {
+      const w = weeks[wk];
+      html += `<tr>
+        <td>${wk}</td>
+        <td class="num">${w.count}</td>
+        <td class="num">${w.horas.toFixed(1)}</td>
+        <td class="num">${w.litros.toFixed(1)}</td>
+        <td class="num">${(w.rendSum / w.count).toFixed(2)} L/h</td>
+      </tr>`;
+    });
+  }
+  table.innerHTML = html;
+}
+
+document.getElementById('dieselFilterDia').onchange = () => { renderDieselTable(); renderDieselChart(); };
+
+document.getElementById('dieselFilter').onchange = () => { renderDieselTable(); renderDieselChart(); };
+
+function renderDieselChart(){
+  const canvas = document.getElementById('dieselChart');
+  if(!canvas || typeof Chart === 'undefined') return;
+  const filter = document.getElementById('dieselFilter').value;
+  const rows = dieselLog
+    .filter(e => filter === 'todos' || e.tipo === filter)
+    .sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+
+  const labels = rows.map(e => e.fecha + ' · ' + e.equipo);
+  const data = rows.map(e => e.rendimiento);
+
+  if(dieselChartInstance) dieselChartInstance.destroy();
+  dieselChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Rendimiento (L/h)',
+        data,
+        borderColor: '#e8630a',
+        backgroundColor: 'rgba(232,99,10,.15)',
+        tension: .25,
+        fill: true,
+        pointBackgroundColor: '#f2c230',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: '#c9c5bc', font: { size: 10 } }, grid: { color: '#3a3835' } },
+        y: { ticks: { color: '#c9c5bc' }, grid: { color: '#3a3835' } }
+      },
+      plugins: { legend: { labels: { color: '#f5f3ee' } } }
+    }
+  });
+}
+
+document.getElementById('dieselExportBtn').onclick = () => {
+  if(dieselLog.length === 0){ showToast('No hay registros para exportar'); return; }
+  const headers = ['Fecha','Día','Planta','Tipo de equipo','Equipo','Horómetro inicial','Horómetro final','Horas trabajadas','Método','Litros consumidos','Rendimiento (L/h)','Referencia (L/h)','Operador'];
+  const aoa = [headers, ...dieselLog.map(e => [e.fecha, DIAS[diaSemana(e.fecha)], e.plant, e.tipo, e.equipo, e.ini, e.fin, e.horas.toFixed(1), e.metodo === 'nivel' ? 'Por nivel' : 'Simple', e.litros.toFixed(1), e.rendimiento.toFixed(2), e.referencia || '', e.operador])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bitacora Diesel');
+  XLSX.writeFile(wb, `Bitacora_Diesel_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Excel descargado');
+};
+
+// =========================================================
+// MÓDULO 3 — CALIDAD DE ASFALTO
+// =========================================================
+let activeNorm = 'SCT';
+document.querySelectorAll('.norm-btn[data-norm]').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.norm-btn[data-norm]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activeNorm = b.dataset.norm;
+    applyNormDefaults();
+  };
+});
+
+function applyNormDefaults(){
+  // Rangos de referencia típicos — editables por el usuario, distintos "punto de partida" según norma elegida
+  if(activeNorm === 'SCT'){
+    document.getElementById('aMin').value = 4.5;
+    document.getElementById('aMax').value = 6.5;
+    document.getElementById('mMin').value = 815;
+    document.getElementById('mFlujoRango').value = '2.0 - 4.0';
+  } else {
+    document.getElementById('aMin').value = 4.0;
+    document.getElementById('aMax').value = 7.0;
+    document.getElementById('mMin').value = 800;
+    document.getElementById('mFlujoRango').value = '2.0 - 4.5';
+  }
+  renderSieveTable();
+}
+
+document.querySelectorAll('.subtab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    ['granulometria','asfalto','marshall'].forEach(k => {
+      document.getElementById('sub-' + k).style.display = (k === t.dataset.sub) ? 'block' : 'none';
+    });
+  };
+});
+
+// --- Granulometría ---
+const DEFAULT_SIEVES = [
+  { malla: '3/4"', min: 100, max: 100 },
+  { malla: '1/2"', min: 80, max: 100 },
+  { malla: '3/8"', min: 70, max: 90 },
+  { malla: 'No. 4', min: 51, max: 68 },
+  { malla: 'No. 8', min: 38, max: 52 },
+  { malla: 'No. 30', min: 17, max: 28 },
+  { malla: 'No. 50', min: 10, max: 19 },
+  { malla: 'No. 100', min: 6, max: 13 },
+  { malla: 'No. 200', min: 4, max: 8 },
+];
+let sieveRows = DEFAULT_SIEVES.map(s => ({ ...s, obtenido: '' }));
+
+function renderSieveTable(){
+  const table = document.getElementById('sieveTable');
+  let html = '<tr><th>Malla</th><th>% Pasa mín.</th><th>% Pasa máx.</th><th>% Obtenido</th><th></th></tr>';
+  sieveRows.forEach((r, i) => {
+    html += `<tr>
+      <td><input data-f="malla" data-i="${i}" value="${r.malla}" style="width:90px;"></td>
+      <td><input data-f="min" data-i="${i}" type="number" value="${r.min}"></td>
+      <td><input data-f="max" data-i="${i}" type="number" value="${r.max}"></td>
+      <td><input data-f="obtenido" data-i="${i}" type="number" step="0.1" value="${r.obtenido}"></td>
+      <td><button data-del="${i}" style="background:none;border:none;color:#6b6862;cursor:pointer;">✕</button></td>
+    </tr>`;
+  });
+  table.innerHTML = html;
+  table.querySelectorAll('input').forEach(inp => {
+    inp.oninput = (e) => {
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      sieveRows[i][f] = (f === 'malla') ? e.target.value : parseFloat(e.target.value) || 0;
+    };
+  });
+  table.querySelectorAll('[data-del]').forEach(btn => {
+    btn.onclick = () => { sieveRows.splice(+btn.dataset.del, 1); renderSieveTable(); };
+  });
+}
+document.getElementById('sieveAddRow').onclick = () => { sieveRows.push({ malla:'Nueva malla', min:0, max:100, obtenido:'' }); renderSieveTable(); };
+
+document.getElementById('sieveSaveBtn').onclick = async () => {
+  const entry = {
+    id: 'sieve_' + Date.now(),
+    norma: activeNorm,
+    plant: document.getElementById('plantSelect').value,
+    fecha: document.getElementById('gFecha').value || new Date().toISOString().slice(0,10),
+    muestra: document.getElementById('gMuestra').value,
+    mezcla: document.getElementById('gMezcla').value,
+    rows: sieveRows.map(r => ({ ...r })),
+  };
+  try{
+    await safeStorage.set('sieve:' + entry.id, JSON.stringify(entry));
+    const idx = await getIndex('sieve-index');
+    idx.push(entry.id);
+    await safeStorage.set('sieve-index', JSON.stringify(idx));
+    showToast('Granulometría guardada');
+  }catch(err){ showToast('No se pudo guardar'); }
+};
+
+document.getElementById('sieveExportBtn').onclick = () => {
+  const headers = ['Malla','% Pasa mín.','% Pasa máx.','% Obtenido','Dentro de rango'];
+  const aoa = [headers, ...sieveRows.map(r => [r.malla, r.min, r.max, r.obtenido, (r.obtenido >= r.min && r.obtenido <= r.max) ? 'Sí' : 'No'])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Granulometria');
+  XLSX.writeFile(wb, `Granulometria_${activeNorm}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Excel descargado');
+};
+
+// --- Contenido de asfalto ---
+let asfaltoLog = [];
+function evalAsfalto(){
+  const val = parseFloat(document.getElementById('aValor').value);
+  const min = parseFloat(document.getElementById('aMin').value);
+  const max = parseFloat(document.getElementById('aMax').value);
+  const box = document.getElementById('aResultado');
+  if(isNaN(val)){ box.textContent = '—'; box.className = 'val'; return null; }
+  const ok = val >= min && val <= max;
+  box.textContent = ok ? 'Cumple' : 'Fuera de rango';
+  box.className = 'val ' + (ok ? '' : 'blue');
+  box.style.color = ok ? '#5cb385' : '#e2726d';
+  return ok;
+}
+['aValor','aMin','aMax'].forEach(id => document.getElementById(id).oninput = evalAsfalto);
+
+document.getElementById('aSaveBtn').onclick = async () => {
+  const val = parseFloat(document.getElementById('aValor').value);
+  if(isNaN(val)){ showToast('Captura el % de asfalto obtenido'); return; }
+  const ok = evalAsfalto();
+  const entry = {
+    id: 'asf_' + Date.now(), norma: activeNorm, plant: document.getElementById('plantSelect').value,
+    fecha: document.getElementById('aFecha').value || new Date().toISOString().slice(0,10),
+    muestra: document.getElementById('aMuestra').value, valor: val,
+    min: parseFloat(document.getElementById('aMin').value), max: parseFloat(document.getElementById('aMax').value),
+    ok,
+  };
+  try{
+    await safeStorage.set('asf:' + entry.id, JSON.stringify(entry));
+    const idx = await getIndex('asf-index'); idx.push(entry.id);
+    await safeStorage.set('asf-index', JSON.stringify(idx));
+    showToast('Resultado guardado');
+    await loadAsfaltoLog();
+  }catch(err){ showToast('No se pudo guardar'); }
+};
+
+async function loadAsfaltoLog(){
+  const ids = await getIndex('asf-index');
+  asfaltoLog = [];
+  for(const id of ids){ const r = await safeStorage.get('asf:' + id).catch(()=>null); if(r) asfaltoLog.push(JSON.parse(r.value)); }
+  const table = document.getElementById('aTable');
+  let html = '<tr><th>Fecha</th><th>Norma</th><th>Planta</th><th>Muestra</th><th>% Obtenido</th><th>Rango</th><th>Resultado</th></tr>';
+  asfaltoLog.slice().reverse().forEach(e => {
+    html += `<tr><td>${e.fecha}</td><td>${e.norma}</td><td>${e.plant}</td><td>${e.muestra||'—'}</td><td class="num">${e.valor}%</td><td class="num">${e.min}-${e.max}%</td><td><span class="badge ${e.ok?'ok':'warn'}">${e.ok?'Cumple':'Fuera de rango'}</span></td></tr>`;
+  });
+  table.innerHTML = html;
+}
+
+document.getElementById('aExportBtn').onclick = () => {
+  if(asfaltoLog.length === 0){ showToast('No hay resultados para exportar'); return; }
+  const headers = ['Fecha','Norma','Planta','Muestra','% Obtenido','Mín','Máx','Resultado'];
+  const aoa = [headers, ...asfaltoLog.map(e => [e.fecha, e.norma, e.plant, e.muestra, e.valor, e.min, e.max, e.ok?'Cumple':'Fuera de rango'])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Contenido Asfalto');
+  XLSX.writeFile(wb, `Contenido_Asfalto_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Excel descargado');
+};
+
+// --- Estabilidad Marshall ---
+let marshallLog = [];
+function evalMarshall(){
+  const val = parseFloat(document.getElementById('mEstabilidad').value);
+  const min = parseFloat(document.getElementById('mMin').value);
+  const box = document.getElementById('mResultado');
+  if(isNaN(val)){ box.textContent = '—'; return null; }
+  const ok = val >= min;
+  box.textContent = ok ? 'Cumple' : 'Fuera de rango';
+  box.style.color = ok ? '#5cb385' : '#e2726d';
+  return ok;
+}
+['mEstabilidad','mMin'].forEach(id => document.getElementById(id).oninput = evalMarshall);
+
+document.getElementById('mSaveBtn').onclick = async () => {
+  const val = parseFloat(document.getElementById('mEstabilidad').value);
+  if(isNaN(val)){ showToast('Captura la estabilidad'); return; }
+  const ok = evalMarshall();
+  const entry = {
+    id: 'mar_' + Date.now(), norma: activeNorm, plant: document.getElementById('plantSelect').value,
+    fecha: document.getElementById('mFecha').value || new Date().toISOString().slice(0,10),
+    muestra: document.getElementById('mMuestra').value, estabilidad: val,
+    flujo: parseFloat(document.getElementById('mFlujo').value) || null,
+    min: parseFloat(document.getElementById('mMin').value), flujoRango: document.getElementById('mFlujoRango').value,
+    ok,
+  };
+  try{
+    await safeStorage.set('mar:' + entry.id, JSON.stringify(entry));
+    const idx = await getIndex('mar-index'); idx.push(entry.id);
+    await safeStorage.set('mar-index', JSON.stringify(idx));
+    showToast('Resultado guardado');
+    await loadMarshallLog();
+  }catch(err){ showToast('No se pudo guardar'); }
+};
+
+async function loadMarshallLog(){
+  const ids = await getIndex('mar-index');
+  marshallLog = [];
+  for(const id of ids){ const r = await safeStorage.get('mar:' + id).catch(()=>null); if(r) marshallLog.push(JSON.parse(r.value)); }
+  const table = document.getElementById('mTable');
+  let html = '<tr><th>Fecha</th><th>Norma</th><th>Planta</th><th>Muestra</th><th>Estabilidad (kg)</th><th>Flujo (mm)</th><th>Mín (kg)</th><th>Resultado</th></tr>';
+  marshallLog.slice().reverse().forEach(e => {
+    html += `<tr><td>${e.fecha}</td><td>${e.norma}</td><td>${e.plant}</td><td>${e.muestra||'—'}</td><td class="num">${e.estabilidad}</td><td class="num">${e.flujo??'—'}</td><td class="num">${e.min}</td><td><span class="badge ${e.ok?'ok':'warn'}">${e.ok?'Cumple':'Fuera de rango'}</span></td></tr>`;
+  });
+  table.innerHTML = html;
+}
+
+document.getElementById('mExportBtn').onclick = () => {
+  if(marshallLog.length === 0){ showToast('No hay resultados para exportar'); return; }
+  const headers = ['Fecha','Norma','Planta','Muestra','Estabilidad (kg)','Flujo (mm)','Mín (kg)','Resultado'];
+  const aoa = [headers, ...marshallLog.map(e => [e.fecha, e.norma, e.plant, e.muestra, e.estabilidad, e.flujo, e.min, e.ok?'Cumple':'Fuera de rango'])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Marshall');
+  XLSX.writeFile(wb, `Marshall_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Excel descargado');
+};
+
+async function getIndex(key){
+  try{ const r = await safeStorage.get(key); return r ? JSON.parse(r.value) : []; }catch(err){ return []; }
+}
+
+// =========================================================
+// UTILIDADES
+// =========================================================
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+initTranscribe();
+loadDieselLog();
+renderSieveTable();
+loadAsfaltoLog();
+loadMarshallLog();
+</script>
+</body>
+</html>
